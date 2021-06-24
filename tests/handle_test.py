@@ -6,14 +6,15 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import registry
 import asyncio
+# from strawberry.type import _wrap_dataclass
 
 
 engine = create_async_engine("sqlite+aiosqlite:///tests/test.db", pool_pre_ping=True, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, class_=AsyncSession, bind=engine)
 mapper_registry = registry()
 
-async def get_session(self) -> AsyncSession:
-    async with self.SessionLocal() as session:
+async def get_session() -> AsyncSession:
+    async with SessionLocal() as session:
         return session
 
 user_table = Table(
@@ -24,6 +25,7 @@ user_table = Table(
     Column('password', String(128)),
 )
 
+# @strawberry.input
 @dataclass
 class User:
     id: int = field(init=False)
@@ -34,9 +36,10 @@ mapper_registry.map_imperatively(User, user_table)
 
 async def create():
     async with engine.begin() as conn:
+        await conn.run_sync(user_table.metadata.drop_all)
         await conn.run_sync(user_table.metadata.create_all)
 
-asyncio.run(create())
+# asyncio.run(create())
 
 crud_graph = SqlalchemyCRUD(get_db=get_session, cls=User, db_model=user_table)
 

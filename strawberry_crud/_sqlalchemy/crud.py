@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Type
+from typing import Any, Callable, List, Optional, Type, Union
 from sqlalchemy import select, delete, update
 # from sqlalchemy.sql.schema import Table
 from strawberry.types import Info
@@ -21,26 +21,31 @@ class SqlalchemyCRUD(BaseCrud):
         self.pk_type: type = type_of_field(self.cls, self.pk) # type: ignore
 
     def _get_fields(self, info: Info):
-        return (getattr(self.model, field.name.value) for field in get_selections(info)) # type: ignore
+        return (getattr(self.cls, field.name.value) for field in get_selections(info)) # type: ignore
 
     def _get_all(_self):
         async def _get_all(self, info: Info) -> List[_self.schema]:
             statement = select(_self._get_fields(info))
             ses = await _self.get_db()
-            return await ses.execute(statement).all()
+            res = await ses.execute(statement)
+            return res.all()
         return _get_all
 
     def _get_one(_self):
         async def _get_one(self, item_id: _self.pk_type, info: Info) -> _self.schema:
-            statement = select(_self._get_fields(info)).where(getattr(_self.model, _self.pk) == item_id)
+            statement = select(_self._get_fields(info)).where(getattr(_self.cls, _self.pk) == item_id)
             ses = await _self.get_db()
-            return await ses.execute(statement).first()
+            res = await ses.execute(statement)
+            item = res.first()
+            if item is not None:
+                return item
+            raise Exception(f"{_self.name} not found.")
         return _get_one
 
     def _update(_self):
         async def _update(self, item_id: _self.pk_type, update_schema: _self._input_update) -> Optional[_self.void]:
             update_data = asdict(update_schema, dict_factory=lambda lst:{el[0]:el[1] for el in lst if el[1] != MissingValue})
-            statement = update(_self.model).where(getattr(_self.model, _self.pk) == item_id).values(**update_data)
+            statement = update(_self.model).where(getattr(_self.cls, _self.pk) == item_id).values(**update_data)
             ses = await _self.get_db()
             await ses.execute(statement)
             await ses.commit()
@@ -62,7 +67,7 @@ class SqlalchemyCRUD(BaseCrud):
 
     def _delete_one(_self):
         async def _delete_one(self, item_id: _self.pk_type) -> Optional[_self.void]: 
-            statement = delete(_self.model).where(getattr(_self.model, _self.pk) == item_id)
+            statement = delete(_self.model).where(getattr(_self.cls, _self.pk) == item_id)
             db = await _self.get_db()
             await db.execute(statement)
             await db.commit()

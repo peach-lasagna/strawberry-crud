@@ -1,9 +1,10 @@
 from typing import Any, Callable, Optional, Type, NewType
 
 import strawberry
-# from strawberry.type import _process_type
+from strawberry.type import _process_type
 from dataclasses import make_dataclass, fields
 from strawberry.custom_scalar import ScalarWrapper
+import copy
 
 
 class MissingValue:
@@ -28,6 +29,7 @@ class BaseCrud:
         # assert schema is not None and db_model is not None, "schema or db_model must not equal None"
 
         self.config = Config() if config is None else config
+        self.name = cls.__name__.title() if name is None else name
         # if schema is None:
         #     raise UnboundLocalError() # TODO schema generation from model
         #     # self.schema = self._convert_model(db_model)
@@ -38,16 +40,17 @@ class BaseCrud:
         self.cls = cls
         self.model = cls if db_model is None else db_model
         
-        self._input_create = strawberry.input(cls)
+        _cls = make_dataclass(cls.__name__, [(f.name, f.type, f.default) for f in fields(cls)]) # type: ignore
+        self._input_create = _process_type(_cls, is_input=True, name=f"InputCreate{self.name}")
         if update_schema is None:
-            _cls = make_dataclass(cls.__name__, [(f.name, Optional[f.type], MissingValue) for f in fields(cls)])
-            self._input_update = strawberry.input(_cls)
+            _cls = make_dataclass(cls.__name__, [(f.name, Optional[f.type], MissingValue) for f in fields(cls)]) # type: ignore
+            self._input_update = _process_type(_cls, is_input=True, name=f"InputUpdate{self.name}")
         else:
             self._input_update = update_schema
 
-        self.schema = strawberry.type(cls)
+        self.schema = strawberry.type(copy.copy(cls))
+        # self.schema = cls
         self.get_db = get_db
-        self.name = cls.__name__.title() if name is None else name
 
         if void_scalar is None:
             func = lambda _: None
